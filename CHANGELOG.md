@@ -6,6 +6,8 @@ All notable changes to this project are listed here. The format follows
 
 ## [Unreleased]
 
+## [1.1.3] - 2026-11-02
+
 ### Fixed
 
 - No more "Where is Brave Browser?" (or Edge, or Spotify) windows. The app
@@ -21,7 +23,8 @@ All notable changes to this project are listed here. The format follows
 - Setup lists your installed browsers and QuickTime, each with its own Allow
   button. Allowing an app that isn't open opens it in the background first.
 - When nothing is playing because a music app hasn't been allowed yet, the
-  notch says so and links to Setup.
+  notch says so and links to Setup. After updating, macOS treats the app as
+  new, so click Allow in Setup once for each music app you use.
 
 ### Security
 
@@ -88,7 +91,8 @@ First release.
   reverb.
 - Same bar centred in the menu bar on displays without a notch.
 
-[Unreleased]: https://github.com/nawed2611/notch-lyrics/compare/v1.1.2...HEAD
+[Unreleased]: https://github.com/nawed2611/notch-lyrics/compare/v1.1.3...HEAD
+[1.1.3]: https://github.com/nawed2611/notch-lyrics/compare/v1.1.2...v1.1.3
 [1.1.2]: https://github.com/nawed2611/notch-lyrics/compare/v1.1.1...v1.1.2
 [1.1.1]: https://github.com/nawed2611/notch-lyrics/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/nawed2611/notch-lyrics/compare/v1.0.0...v1.1.0
