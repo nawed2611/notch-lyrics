@@ -5,8 +5,8 @@ struct SpotifySource: PlaybackSource {
     let name = "Spotify"
 
     private static let script = """
-    if application "Spotify" is not running then return ""
-    tell application "Spotify"
+    if application id "com.spotify.client" is not running then return ""
+    tell application id "com.spotify.client"
         if player state is stopped then return ""
         set t to name of current track
         set a to artist of current track
@@ -21,7 +21,7 @@ struct SpotifySource: PlaybackSource {
     """
 
     func fetch() -> NowPlayingInfo? {
-        guard let raw = AppleScriptRunner.run(Self.script), !raw.isEmpty else { return nil }
+        guard let raw = ScriptTarget.spotify.run(Self.script), !raw.isEmpty else { return nil }
         let parts = raw.components(separatedBy: "|||")
         guard parts.count >= 7,
               let pos = Double(parts[3].replacingOccurrences(of: ",", with: ".")),

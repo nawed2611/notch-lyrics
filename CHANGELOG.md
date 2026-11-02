@@ -6,6 +6,29 @@ All notable changes to this project are listed here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- No more "Where is Brave Browser?" (or Edge, or Spotify) windows. The app
+  asked about every supported app on every check, including ones that aren't
+  installed.
+- The open lyrics card no longer has a pale box around its sides and below
+  it on light wallpapers. The card looks the same otherwise.
+- macOS permission prompts no longer appear on their own. The app only reads
+  apps you've allowed, and Setup asks for each one when you click Allow.
+
+### Changed
+
+- Setup lists your installed browsers and QuickTime, each with its own Allow
+  button. Allowing an app that isn't open opens it in the background first.
+- When nothing is playing because a music app hasn't been allowed yet, the
+  notch says so and links to Setup.
+
+### Security
+
+- Browser scripts only run in tabs whose hostname is a supported site. Before,
+  a URL that merely contained one (`example.com/?youtube.com`) also matched.
+- Cover art is only downloaded over https.
+
 ## [1.1.2] - 2026-10-29
 
 ### Changed
@@ -65,8 +88,8 @@ First release.
   reverb.
 - Same bar centred in the menu bar on displays without a notch.
 
-[Unreleased]: https://github.com/nawed-clueso/notch-lyrics/compare/v1.1.2...HEAD
-[1.1.2]: https://github.com/nawed-clueso/notch-lyrics/compare/v1.1.1...v1.1.2
-[1.1.1]: https://github.com/nawed-clueso/notch-lyrics/compare/v1.1.0...v1.1.1
-[1.1.0]: https://github.com/nawed-clueso/notch-lyrics/compare/v1.0.0...v1.1.0
-[1.0.0]: https://github.com/nawed-clueso/notch-lyrics/releases/tag/v1.0.0
+[Unreleased]: https://github.com/nawed2611/notch-lyrics/compare/v1.1.2...HEAD
+[1.1.2]: https://github.com/nawed2611/notch-lyrics/compare/v1.1.1...v1.1.2
+[1.1.1]: https://github.com/nawed2611/notch-lyrics/compare/v1.1.0...v1.1.1
+[1.1.0]: https://github.com/nawed2611/notch-lyrics/compare/v1.0.0...v1.1.0
+[1.0.0]: https://github.com/nawed2611/notch-lyrics/releases/tag/v1.0.0

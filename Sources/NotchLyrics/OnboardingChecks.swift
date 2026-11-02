@@ -25,14 +25,6 @@ enum OnboardingChecks {
 
     // MARK: - Automation (Apple Events)
 
-    /// Apps whose playback state the lyrics engine reads over Apple Events.
-    /// Browsers are deliberately excluded: `BrowserMediaSource` covers many of
-    /// them and prompting for each would be a wall of dialogs.
-    static let automationTargets: [(bundleID: String, name: String)] = [
-        ("com.spotify.client", "Spotify"),
-        ("com.apple.Music", "Apple Music")
-    ]
-
     /// Whether this app may drive `bundleID` over Apple Events.
     ///
     /// `askUserIfNeeded: false` keeps this silent, so it is safe to call on
@@ -68,15 +60,28 @@ enum OnboardingChecks {
         }
     }
 
-    /// Worst status across every automation target that is actually installed.
-    static func automationSummary() -> Status {
-        let applicable = automationTargets
-            .map { automationStatus(for: $0.bundleID) }
-            .filter { $0 != .notApplicable }
-        if applicable.isEmpty { return .notApplicable }
-        if applicable.contains(.blocked) { return .blocked }
-        if applicable.contains(.notDetermined) { return .notDetermined }
-        return .satisfied
+    /// Asks for Automation access to `target`. macOS can only ask about a
+    /// running app, so one that isn't running is opened first, hidden and in
+    /// the background. Blocks until the dialog closes: call off main, and only
+    /// from a button the user pressed.
+    static func requestAutomation(for target: ScriptTarget) -> Status {
+        guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: target.bundleID) else {
+            return .notApplicable
+        }
+        if !target.isRunning {
+            let config = NSWorkspace.OpenConfiguration()
+            config.activates = false
+            config.hides = true
+            NSWorkspace.shared.openApplication(at: url, configuration: config, completionHandler: nil)
+        }
+        // A freshly opened app takes a moment before it answers Apple Events;
+        // until then the check reports it as not running.
+        for _ in 0..<20 {
+            let status = automationStatus(for: target.bundleID, askUserIfNeeded: true)
+            if status != .notDetermined { return status }
+            Thread.sleep(forTimeInterval: 0.5)
+        }
+        return .notDetermined
     }
 
     // MARK: - Microphone (the effects engine's capture path)

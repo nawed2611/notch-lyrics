@@ -6,8 +6,8 @@ struct QuickTimeSource: PlaybackSource {
     let name = "QuickTime"
 
     private static let script = """
-    if application "QuickTime Player" is not running then return ""
-    tell application "QuickTime Player"
+    if application id "com.apple.QuickTimePlayerX" is not running then return ""
+    tell application id "com.apple.QuickTimePlayerX"
         try
             if (count of documents) = 0 then return ""
             set d to document 1
@@ -23,7 +23,7 @@ struct QuickTimeSource: PlaybackSource {
     """
 
     func fetch() -> NowPlayingInfo? {
-        guard let raw = AppleScriptRunner.run(Self.script), !raw.isEmpty else { return nil }
+        guard let raw = ScriptTarget.quickTime.run(Self.script), !raw.isEmpty else { return nil }
         let parts = raw.components(separatedBy: "|||")
         guard parts.count == 4,
               let pos = Double(parts[1].replacingOccurrences(of: ",", with: ".")),

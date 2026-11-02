@@ -1,6 +1,6 @@
 # Notch Lyrics 🪩
 
-[![Build](https://github.com/nawed-clueso/notch-lyrics/actions/workflows/build.yml/badge.svg)](https://github.com/nawed-clueso/notch-lyrics/actions/workflows/build.yml)
+[![Build](https://github.com/nawed2611/notch-lyrics/actions/workflows/build.yml/badge.svg)](https://github.com/nawed2611/notch-lyrics/actions/workflows/build.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 Synced lyrics in your MacBook's notch. The notch grows a little on both sides
@@ -29,7 +29,7 @@ playing in Spotify.
 ## Install
 
 1. Download **Notch Lyrics.dmg** from the
-   [latest release](https://github.com/nawed-clueso/notch-lyrics/releases/latest)
+   [latest release](https://github.com/nawed2611/notch-lyrics/releases/latest)
    and drag the app into Applications.
 2. The app isn't signed with an Apple Developer ID, so macOS blocks the first
    launch. Open it once, then go to **System Settings › Privacy & Security** and
@@ -39,16 +39,21 @@ playing in Spotify.
    xattr -dr com.apple.quarantine "/Applications/Notch Lyrics.app"
    ```
 
-3. Allow it to control your music app when macOS asks. The Setup pane in the
-   app walks through the rest.
+3. Open the app and follow Setup. It asks macOS for each permission only when
+   you click **Allow**, and only for apps you have installed.
 
 **Requires** macOS 15 or later on Apple Silicon.
 
 ### Browser playback
 
+Allow the browser in Setup first. Then:
+
 - **Arc:** works as is.
-- **Safari and Chrome:** turn on **Allow JavaScript from Apple Events** in the
-  Develop menu (Safari) or View › Developer (Chrome).
+- **Safari, Chrome, Brave and Edge:** turn on **Allow JavaScript from Apple
+  Events** in the Develop menu (Safari) or View › Developer (the others). This
+  setting covers the whole browser: any app you've allowed to control it can
+  run scripts in your tabs, including signed-in ones. Only turn it on in a
+  browser you play music in.
 - **Dia and other apps:** install `media-control`, which reads the system's Now
   Playing information:
 
@@ -86,8 +91,8 @@ again; sign it with a stable identity of your own to keep them.
 
 Notch Lyrics has no analytics and no account. The only network requests are
 lyrics lookups to [LRCLIB](https://lrclib.net) (track title, artist, album and
-duration) and cover art. With Spotify lyrics turned on, it also signs in to
-Spotify with your cookie and asks for lyrics by track id. The optional audio effects process system audio live
+duration) and cover art over https. With Spotify lyrics turned on, it also
+signs in to Spotify with your cookie and asks for lyrics by track id. The optional audio effects process system audio live
 and never record or store it.
 
 ## Contributing

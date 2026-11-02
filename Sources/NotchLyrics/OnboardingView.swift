@@ -46,12 +46,14 @@ final class SystemProbe: ObservableObject {
 
     private var timer: Timer?
 
+    /// Ready as soon as any one app can be read: nobody needs every player
+    /// and every browser allowed.
     var automationSummary: OnboardingChecks.Status {
         let applicable = snap.automation.values.filter { $0 != .notApplicable }
         if applicable.isEmpty { return .notApplicable }
-        if applicable.contains(.blocked) { return .blocked }
+        if applicable.contains(.satisfied) { return .satisfied }
         if applicable.contains(.notDetermined) { return .notDetermined }
-        return .satisfied
+        return .blocked
     }
 
     func start() {
@@ -78,7 +80,7 @@ final class SystemProbe: ObservableObject {
         Task.detached(priority: .utility) {
             var s = Snapshot()
             s.running = running
-            for target in OnboardingChecks.automationTargets {
+            for target in ScriptTarget.allCases {
                 s.automation[target.bundleID] = OnboardingChecks.automationStatus(for: target.bundleID)
             }
             s.microphone = OnboardingChecks.microphoneStatus()
@@ -214,7 +216,7 @@ private struct WelcomeStep: View {
                            detail: "Windows appear and disappear as you plug monitors in and out.")
             }
             InfoNote(icon: "hand.raised",
-                     text: "Each step asks macOS for one permission. Lyrics are looked up by song title and artist, and audio never leaves your Mac.")
+                     text: "macOS only asks for a permission when you click Allow, and only for apps you have. Lyrics are looked up by song title and artist, and audio never leaves your Mac.")
         }
     }
 }
@@ -223,62 +225,89 @@ private struct WelcomeStep: View {
 
 private struct LyricsStep: View {
     @ObservedObject var probe: SystemProbe
+    @State private var asking: ScriptTarget?
+
+    /// Browsers and QuickTime that are installed. Each one is optional.
+    private var others: [ScriptTarget] {
+        ([.quickTime] + ScriptTarget.browsers).filter {
+            (probe.snap.automation[$0.bundleID] ?? .notApplicable) != .notApplicable
+        }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: Space.xl) {
             StepHeading(
                 eyebrow: "LYRICS ACCESS",
                 title: "Let it read what's playing.",
-                subtitle: "macOS calls this Automation. It lets Notch Lyrics ask your music apps for the current track and playback position, which is what keeps the lyrics in time.",
+                subtitle: "macOS calls this Automation. Allow the apps you play music in, and Notch Lyrics can ask them for the current track and position. That's what keeps the lyrics in time.",
                 status: probe.automationSummary
             )
 
-            VStack(spacing: Space.sm) {
-                ForEach(OnboardingChecks.automationTargets, id: \.bundleID) { target in
-                    let status = probe.snap.automation[target.bundleID] ?? .notDetermined
-                    StatusRow(
-                        icon: "app.badge.checkmark",
-                        title: target.name,
-                        detail: detail(for: status, target: target),
-                        status: status
-                    ) {
-                        if status == .notDetermined {
-                            Button("Grant Access") { request(target.bundleID) }
-                                .buttonStyle(MiniButtonStyle(filled: true))
-                        } else if status == .blocked {
-                            Button("Open Settings") { OnboardingChecks.openSettings(.automation) }
-                                .buttonStyle(MiniButtonStyle())
-                        }
-                    }
-                }
+            group("MUSIC APPS", ScriptTarget.players)
+
+            if !others.isEmpty {
+                group("BROWSERS AND QUICKTIME · OPTIONAL", others)
             }
 
             InfoNote(icon: "safari",
-                     text: "Browsers are handled separately and need no prompt here. Arc works out of the box; in Safari and Chrome enable “Allow JavaScript from Apple Events” in the Develop menu.")
-
-            InfoNote(icon: "arrow.clockwise",
-                     text: "The prompt only appears while the app in question is running. Open Spotify or Music first if Grant Access does nothing.")
+                     text: "Safari, Chrome, Brave and Edge also need “Allow JavaScript from Apple Events” (Safari: Develop menu; the others: View › Developer). It applies to the whole browser, so any app you've allowed to control it can run scripts in your tabs. Only turn it on in a browser you play music in. Arc needs nothing extra.")
         }
     }
 
-    private func detail(for status: OnboardingChecks.Status,
-                        target: (bundleID: String, name: String)) -> String {
+    private func group(_ title: String, _ targets: [ScriptTarget]) -> some View {
+        VStack(alignment: .leading, spacing: Space.sm) {
+            Text(title)
+                .font(Typo.micro)
+                .tracking(1.2)
+                .foregroundStyle(SP.textTertiary)
+            ForEach(targets, id: \.self) { target in
+                let status = probe.snap.automation[target.bundleID] ?? .notApplicable
+                StatusRow(
+                    icon: target.isBrowser ? "globe" : "music.note",
+                    title: target.name,
+                    detail: detail(for: status, target: target),
+                    status: status
+                ) {
+                    if asking == target {
+                        ProgressView().controlSize(.small)
+                    } else if status == .notDetermined {
+                        Button("Allow") { request(target) }
+                            .buttonStyle(MiniButtonStyle(filled: true))
+                            .disabled(asking != nil)
+                    } else if status == .blocked {
+                        Button("Open Settings") { OnboardingChecks.openSettings(.automation) }
+                            .buttonStyle(MiniButtonStyle())
+                    }
+                }
+            }
+        }
+    }
+
+    private func detail(for status: OnboardingChecks.Status, target: ScriptTarget) -> String {
         switch status {
-        case .satisfied:      "Allowed"
-        case .notApplicable:  "Not installed, nothing to grant"
-        case .blocked:        "Denied. Turn Notch Lyrics on under \(target.name) in Automation."
-        case .notDetermined:  probe.snap.running.contains(target.bundleID)
-                                ? "Not asked yet" : "Open \(target.name), then grant access"
+        case .satisfied:
+            switch target {
+            case .safari:               "Allowed. Turn on Allow JavaScript from Apple Events in the Develop menu."
+            case .chrome, .brave, .edge: "Allowed. Turn on Allow JavaScript from Apple Events in View › Developer."
+            default:                    "Allowed"
+            }
+        case .notApplicable:  "Not installed"
+        case .blocked:        "Turned off. Switch on \(target.name) under Notch Lyrics in Automation."
+        case .notDetermined:  asking == target ? "Answer the macOS prompt" : "Not allowed yet"
         case .missing:        "Unavailable"
         }
     }
 
-    /// `askUserIfNeeded: true` blocks until the dialog closes, so it must not
-    /// run on the main thread or the whole window freezes behind the prompt.
-    private func request(_ bundleID: String) {
+    /// Opens the app in the background if it isn't running, then shows the
+    /// macOS prompt. Off main: the call blocks until the prompt is answered.
+    private func request(_ target: ScriptTarget) {
+        asking = target
         Task.detached(priority: .userInitiated) {
-            _ = OnboardingChecks.automationStatus(for: bundleID, askUserIfNeeded: true)
-            await MainActor.run { probe.refresh() }
+            _ = OnboardingChecks.requestAutomation(for: target)
+            await MainActor.run {
+                asking = nil
+                probe.refresh()
+            }
         }
     }
 }

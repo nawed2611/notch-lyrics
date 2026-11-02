@@ -5,8 +5,8 @@ struct AppleMusicSource: PlaybackSource {
     let name = "Apple Music"
 
     private static let script = """
-    if application "Music" is not running then return ""
-    tell application "Music"
+    if application id "com.apple.Music" is not running then return ""
+    tell application id "com.apple.Music"
         if player state is stopped then return ""
         try
             set t to name of current track
@@ -24,7 +24,7 @@ struct AppleMusicSource: PlaybackSource {
     """
 
     func fetch() -> NowPlayingInfo? {
-        guard let raw = AppleScriptRunner.run(Self.script), !raw.isEmpty else { return nil }
+        guard let raw = ScriptTarget.music.run(Self.script), !raw.isEmpty else { return nil }
         let parts = raw.components(separatedBy: "|||")
         guard parts.count == 7,
               let pos = Double(parts[3].replacingOccurrences(of: ",", with: ".")),

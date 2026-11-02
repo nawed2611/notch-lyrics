@@ -18,6 +18,9 @@ final class PlaybackState: ObservableObject {
     @Published private(set) var palette: [Color] = ColorExtractor.defaultPalette
     @Published private(set) var backgroundColor: Color = ColorExtractor.defaultBackground
     @Published var isHovering: Bool = false
+    /// Running players that haven't been allowed in Setup yet. Only filled
+    /// while nothing is playing.
+    @Published private(set) var playersWaitingForAccess: [ScriptTarget] = []
     /// Bumped by the lyric timer to force the collapsed view to re-render when
     /// the chunk-within-a-line changes (the current line index itself doesn't
     /// change mid-line).
@@ -38,6 +41,8 @@ final class PlaybackState: ObservableObject {
     func start() {
         coordinator.start { [weak self] info in
             self?.handleUpdate(info)
+        } onAccessNeeded: { [weak self] waiting in
+            self?.playersWaitingForAccess = waiting
         }
         // Local-only timer: re-derives "current lyric" from the captured timestamp;
         // no subprocess fork, just a property read. The coordinator handles fresh fetches.
@@ -102,7 +107,9 @@ final class PlaybackState: ObservableObject {
     }
 
     private func downloadArtwork(from urlStr: String, trackId: String) {
-        guard let url = URL(string: urlStr) else { return }
+        // Browser artwork URLs come from the page, so only fetch real https
+        // images, never file:// or a plain-http address on the local network.
+        guard let url = URL(string: urlStr), url.scheme?.lowercased() == "https" else { return }
         artworkTask = Task { @MainActor in
             do {
                 let (data, _) = try await URLSession.shared.data(from: url)
@@ -346,7 +353,10 @@ final class PlaybackState: ObservableObject {
     /// What the closed bar reads: the line being sung, or the track title
     /// during breaks and when there are no lyrics.
     var collapsedText: String {
-        guard let nowPlaying else { return "Disco's quiet" }
+        guard let nowPlaying else {
+            if let waiting = playersWaitingForAccess.first { return "\(waiting.name) needs access" }
+            return "Disco's quiet"
+        }
         if let line = currentLine, !line.isEmpty, breakSpan == nil { return line }
         return nowPlaying.title
     }
@@ -469,12 +479,12 @@ final class PlaybackState: ObservableObject {
         let src = info.sourceName
         switch src {
         case "Spotify":
-            run(#"tell application "Spotify" to set player position to "# + fixed(target))
+            run(.spotify, "tell \(ScriptTarget.spotify.scriptReference) to set player position to \(fixed(target))")
         case "Apple Music":
-            run(#"tell application "Music" to set player position to "# + fixed(target))
+            run(.music, "tell \(ScriptTarget.music.scriptReference) to set player position to \(fixed(target))")
         case "QuickTime":
-            run("""
-            tell application "QuickTime Player"
+            run(.quickTime, """
+            tell \(ScriptTarget.quickTime.scriptReference)
                 if (count of documents) > 0 then set current time of document 1 to \(fixed(target))
             end tell
             """)
@@ -523,12 +533,12 @@ final class PlaybackState: ObservableObject {
         guard let src = nowPlaying?.sourceName else { return }
         switch src {
         case "Spotify":
-            run(#"tell application "Spotify" to playpause"#)
+            run(.spotify, "tell \(ScriptTarget.spotify.scriptReference) to playpause")
         case "Apple Music":
-            run(#"tell application "Music" to playpause"#)
+            run(.music, "tell \(ScriptTarget.music.scriptReference) to playpause")
         case "QuickTime":
-            run("""
-            tell application "QuickTime Player"
+            run(.quickTime, """
+            tell \(ScriptTarget.quickTime.scriptReference)
                 if (count of documents) > 0 then
                     tell document 1
                         if playing then
@@ -553,8 +563,8 @@ final class PlaybackState: ObservableObject {
     func nextTrack() {
         guard let src = nowPlaying?.sourceName else { return }
         switch src {
-        case "Spotify":     run(#"tell application "Spotify" to next track"#)
-        case "Apple Music": run(#"tell application "Music" to next track"#)
+        case "Spotify":     run(.spotify, "tell \(ScriptTarget.spotify.scriptReference) to next track")
+        case "Apple Music": run(.music, "tell \(ScriptTarget.music.scriptReference) to next track")
         default:
             if src.hasPrefix("Now Playing") {
                 NowPlayingSource.command("next-track")
@@ -568,8 +578,8 @@ final class PlaybackState: ObservableObject {
     func previousTrack() {
         guard let src = nowPlaying?.sourceName else { return }
         switch src {
-        case "Spotify":     run(#"tell application "Spotify" to previous track"#)
-        case "Apple Music": run(#"tell application "Music" to previous track"#)
+        case "Spotify":     run(.spotify, "tell \(ScriptTarget.spotify.scriptReference) to previous track")
+        case "Apple Music": run(.music, "tell \(ScriptTarget.music.scriptReference) to previous track")
         default:
             if src.hasPrefix("Now Playing") {
                 NowPlayingSource.command("previous-track")
@@ -590,8 +600,10 @@ final class PlaybackState: ObservableObject {
         """
     }
 
-    private func run(_ script: String) {
-        Task.detached { _ = AppleScriptRunner.run(script) }
+    /// Sends a command to a player that is still running and allowed, so a
+    /// press right after it quits can't relaunch it.
+    private func run(_ target: ScriptTarget, _ script: String) {
+        Task.detached { _ = target.run(script) }
     }
 
     private func runInBrowserMediaTab(js: String) {

@@ -54,9 +54,12 @@ protocol PlaybackSource {
 @MainActor
 final class SourceCoordinator {
     typealias Listener = (NowPlayingInfo?) -> Void
+    typealias AccessListener = ([ScriptTarget]) -> Void
 
     private let sources: [PlaybackSource]
     private var listener: Listener?
+    private var accessListener: AccessListener?
+    private var lastWaiting: [ScriptTarget] = []
     private var pollTimer: Timer?
     private var lastEmitted: NowPlayingInfo?
     /// When nothing is currently playing, we prefer to keep showing whichever source
@@ -68,8 +71,11 @@ final class SourceCoordinator {
         self.sources = sources
     }
 
-    func start(listener: @escaping Listener) {
+    /// `onAccessNeeded` hears which running players are still waiting for
+    /// Automation access, so the idle pill can point at Setup.
+    func start(listener: @escaping Listener, onAccessNeeded: @escaping AccessListener) {
         self.listener = listener
+        self.accessListener = onAccessNeeded
         poll()                       // fire immediately
         pollTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.poll() }
@@ -108,9 +114,17 @@ final class SourceCoordinator {
             } else {
                 chosen = results.first
             }
+            // Only worth asking when nothing is playing: that's the only
+            // time the pill shows it.
+            let waiting = chosen == nil ? AutomationGate.playersWaitingForAccess() : []
             DispatchQueue.main.async { [weak self] in
-                self?.isPolling = false
-                self?.emit(chosen)
+                guard let self else { return }
+                self.isPolling = false
+                self.emit(chosen)
+                if waiting != self.lastWaiting {
+                    self.lastWaiting = waiting
+                    self.accessListener?(waiting)
+                }
             }
         }
     }

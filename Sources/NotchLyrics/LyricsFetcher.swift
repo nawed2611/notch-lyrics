@@ -71,7 +71,7 @@ actor LyricsFetcher {
         // taking 10s+ for the round-trip. A short timeout silently drops every
         // lookup, so allow generous headroom.
         request.timeoutInterval = 20
-        request.setValue("NotchLyrics/1.0 (https://github.com/nawed-clueso/notch-lyrics)", forHTTPHeaderField: "User-Agent")
+        request.setValue("NotchLyrics/1.0 (https://github.com/nawed2611/notch-lyrics)", forHTTPHeaderField: "User-Agent")
 
         let bundle: LyricsBundle? = await {
             do {
@@ -113,7 +113,7 @@ actor LyricsFetcher {
         guard let url = components.url else { return nil }
         var request = URLRequest(url: url)
         request.timeoutInterval = 20
-        request.setValue("NotchLyrics/1.0 (https://github.com/nawed-clueso/notch-lyrics)", forHTTPHeaderField: "User-Agent")
+        request.setValue("NotchLyrics/1.0 (https://github.com/nawed2611/notch-lyrics)", forHTTPHeaderField: "User-Agent")
         do {
             let (data, _) = try await URLSession.shared.data(for: request)
             guard let arr = try JSONSerialization.jsonObject(with: data) as? [[String: Any]],

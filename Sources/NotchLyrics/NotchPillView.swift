@@ -77,7 +77,9 @@ private struct PillContent: View {
                         .opacity(0.95)
                 }
             }
-            .shadow(color: .black.opacity(open ? 0.35 : 0), radius: 12, x: 0, y: 4)
+            // No `.shadow` here. A shadow on a group holding the behind-window
+            // blur flattens the blur and spreads it past the card's edges, which
+            // showed as a pale box beside and below the card on light wallpapers.
 
             UnifiedContent(state: state, layout: layout, bar: bar, shape: shape)
         }
@@ -126,7 +128,9 @@ private struct CardGlass: View {
     @ObservedObject var state: PlaybackState
 
     /// How much the dark layer over the glass hides what's behind the card.
-    private static let dim = 0.35
+    /// Matched to how dark the card has always looked: about 30/255 over a
+    /// light wallpaper.
+    private static let dim = 0.77
 
     var body: some View {
         let look = ArtLooks.current
@@ -980,10 +984,23 @@ private struct VideoHeading: View {
                 .foregroundStyle(Color.white.opacity(state.nowPlaying == nil ? 0.65 : 1))
                 .lineLimit(2)
             if state.nowPlaying == nil {
-                Text("Play something and its lyrics show up here.")
-                    .font(AppFont.regular(layout.pt(11)))
-                    .foregroundStyle(Color.white.opacity(0.55))
-                    .lineLimit(1)
+                if let waiting = state.playersWaitingForAccess.first {
+                    Button {
+                        MainWindowController.shared.show(pane: .setup)
+                    } label: {
+                        Text("Allow \(waiting.name) in Setup to see its lyrics")
+                            .font(AppFont.regular(layout.pt(11)))
+                            .foregroundStyle(Color.white.opacity(0.75))
+                            .underline()
+                            .lineLimit(1)
+                    }
+                    .buttonStyle(.plain)
+                } else {
+                    Text("Play something and its lyrics show up here.")
+                        .font(AppFont.regular(layout.pt(11)))
+                        .foregroundStyle(Color.white.opacity(0.55))
+                        .lineLimit(1)
+                }
             }
         }
     }

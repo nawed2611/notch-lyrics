@@ -8,15 +8,6 @@ import Foundation
 struct BrowserMediaSource: PlaybackSource {
     let name = "Browser Media"
 
-    /// URL substrings that get JS-injected. Filtering at the tab-iteration level avoids
-    /// running JS in every tab of every window on every poll.
-    private static let mediaHostHints = [
-        "music.youtube.com", "youtube.com", "soundcloud.com",
-        "music.apple.com", "open.spotify.com", "bandcamp.com",
-        "vimeo.com", "twitch.tv", "music.amazon.com", "tidal.com",
-        "deezer.com", "audiomack.com"
-    ]
-
     /// Hosts whose content is *music* (we'll try LRCLib for lyrics).
     private static let musicHosts: Set<String> = [
         "music.youtube.com", "soundcloud.com", "music.apple.com",
@@ -31,7 +22,9 @@ struct BrowserMediaSource: PlaybackSource {
     // kindHint = "music" | "podcast" | "video" | "" (empty = caller decides).
     // Spotify Web uses Web Audio API so <audio>.duration is NaN/0 — we scrape
     // the player-bar timestamps instead.
-    private static let injectionJS = #"""
+    private static let injectionJS = "(\(MediaHosts.jsGuard)) ? " + readerJS + " : ''"
+
+    private static let readerJS = #"""
     (function() {
         try {
             var media = document.querySelector('video, audio');
@@ -134,19 +127,13 @@ struct BrowserMediaSource: PlaybackSource {
         // Space/app, then the winning source (and track id) flip-flops against
         // NowPlayingSource, resetting lyrics each time. NowPlayingSource owns
         // Dia outright — it reads the system session regardless of focus.
-        let browsers: [BrowserKind] = [
-            .safari,
-            .chrome("Google Chrome"), .chrome("Arc"),
-            .chrome("Brave Browser"), .chrome("Microsoft Edge")
-        ]
         // Prefer a PLAYING tab across all browsers; only fall back to a paused tab
         // when nothing is playing. Otherwise a paused YouTube tab shadows a playing
         // Spotify Web tab that happens to sit later in tab order.
         var fallback: NowPlayingInfo?
-        for browser in browsers {
-            guard browser.isRunning else { continue }
-            if let raw = browser.findMediaTab(hostHints: Self.mediaHostHints, js: Self.injectionJS),
-               let info = parse(raw, sourceLabel: browser.appName) {
+        for browser in ScriptTarget.browsers where browser.isReadable {
+            if let raw = Self.findMediaTab(in: browser, js: Self.injectionJS),
+               let info = parse(raw, sourceLabel: browser.name) {
                 if info.isPlaying { return info }
                 if fallback == nil { fallback = info }
             }
@@ -209,46 +196,19 @@ struct BrowserMediaSource: PlaybackSource {
     }
 }
 
-// MARK: - Browser dialect
+// MARK: - Tab search
 
-private enum BrowserKind {
-    case safari
-    case chrome(String)
-
-    var appName: String {
-        switch self {
-        case .safari: return "Safari"
-        case .chrome(let n): return n
-        }
-    }
-
-    var isRunning: Bool {
-        AppleScriptRunner.run("application \"\(appName)\" is running") == "true"
-    }
-
-    /// Iterates every tab in every window, runs JS only in tabs whose URL contains
-    /// a known media-host hint. Returns the first non-empty result, preferring
-    /// playing tabs by simple ordering (first-match wins — playing tabs typically
-    /// fronted by the user).
-    func findMediaTab(hostHints: [String], js: String) -> String? {
+extension BrowserMediaSource {
+    /// Runs `js` in each tab whose URL mentions a media host. Returns the first
+    /// playing tab's result, else the first paused one, so a playing Spotify tab
+    /// wins over a paused YouTube tab in the same window.
+    fileprivate static func findMediaTab(in browser: ScriptTarget, js: String) -> String? {
         let escapedJS = js
             .replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "\"", with: "\\\"")
-        let hostsList = hostHints
-            .map { "\"\($0)\"" }
-            .joined(separator: ", ")
-
-        // For each media tab we run the JS and inspect the isPlaying flag (field 6
-        // of the "|||"-joined payload). Return immediately on the first PLAYING tab;
-        // otherwise remember the first result and return it as a paused fallback —
-        // so a playing Spotify tab wins over a paused YouTube tab in the same window.
-        let runJS: String
-        switch self {
-        case .safari:            runJS = "do JavaScript js in t"
-        case .chrome:            runJS = "execute t javascript js"
-        }
+        let runJS = browser.isSafari ? "do JavaScript js in t" : "execute t javascript js"
         let body = """
-        tell application "\(appName)"
+        tell \(browser.scriptReference)
             set bestResult to ""
             repeat with w in windows
                 repeat with t in tabs of w
@@ -280,7 +240,7 @@ private enum BrowserKind {
         // source recovers on the next tick.
         let script = """
         set js to "\(escapedJS)"
-        set hosts to {\(hostsList)}
+        set hosts to {\(MediaHosts.appleScriptList)}
         try
             with timeout of 3 seconds
                 \(body)
@@ -288,6 +248,6 @@ private enum BrowserKind {
         end try
         return ""
         """
-        return AppleScriptRunner.run(script)
+        return browser.run(script)
     }
 }
