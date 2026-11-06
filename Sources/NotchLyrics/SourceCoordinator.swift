@@ -1,5 +1,8 @@
 import Foundation
 import AppKit
+import os
+
+let playbackLogger = Logger(subsystem: "com.notchlyrics.app", category: "playback")
 
 /// Hint for the UI: should we attempt lyric lookup and show a lyric stack,
 /// or treat this as generic video/audio with no lyrics expected?
@@ -90,10 +93,22 @@ final class SourceCoordinator {
     /// browser tab mid-reload), we skip new ticks until the in-flight poll returns,
     /// instead of piling up blocked background threads that never recover.
     private var isPolling = false
+    private var pollStarted = Date.distantPast
+    /// Bumped per poll, so a poll that was given up on can't report late.
+    private var pollGeneration = 0
+    /// A poll that hasn't returned after this long is abandoned and a fresh
+    /// one started, so one stuck source can't freeze the notch for good.
+    private static let pollTimeout: TimeInterval = 10
 
     private func poll() {
-        if isPolling { return }
+        if isPolling {
+            guard Date().timeIntervalSince(pollStarted) >= Self.pollTimeout else { return }
+            playbackLogger.log("⏱️ poll stuck for \(Int(Self.pollTimeout), privacy: .public)s, starting a fresh one")
+        }
         isPolling = true
+        pollStarted = Date()
+        pollGeneration += 1
+        let generation = pollGeneration
         let snapshot = sources
         let lastPlayingName = lastPlayingSourceName
         DispatchQueue.global(qos: .userInitiated).async {
@@ -118,7 +133,7 @@ final class SourceCoordinator {
             // time the pill shows it.
             let waiting = chosen == nil ? AutomationGate.playersWaitingForAccess() : []
             DispatchQueue.main.async { [weak self] in
-                guard let self else { return }
+                guard let self, generation == self.pollGeneration else { return }
                 self.isPolling = false
                 self.emit(chosen)
                 if waiting != self.lastWaiting {

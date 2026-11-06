@@ -70,20 +70,76 @@ enum ScriptTarget: String, CaseIterable, Sendable {
     }
 }
 
-/// Remembers which apps are already allowed, so the poll asks TCC only about
-/// apps it hasn't seen allowed yet. Never asks the user.
+/// Remembers which apps are allowed, so the poll asks TCC only about apps it
+/// hasn't seen allowed yet. Never asks the user, and never blocks the caller.
+///
+/// `AEDeterminePermissionToAutomateTarget` can block indefinitely. Run inline,
+/// one stuck call would freeze polling for good, so the check runs on
+/// its own thread and callers read the last answer. An app counts as not
+/// allowed until a check has said otherwise.
 enum AutomationGate {
-    private static let allowed = OSAllocatedUnfairLock(initialState: Set<String>())
+    private struct State {
+        var allowed: Set<String> = []
+        /// Apps whose last finished check said they aren't allowed.
+        var denied: Set<String> = []
+        var inFlight: [String: Int] = [:]
+        var lastStarted: [String: Date] = [:]
+        var lastFinished: [String: Date] = [:]
+    }
+
+    private static let state = OSAllocatedUnfairLock(initialState: State())
+    /// How soon an app that wasn't allowed is checked again.
+    private static let recheckAfter: TimeInterval = 3
+    /// A check still running after this long is treated as stuck, and another
+    /// one is started alongside it.
+    private static let stuckAfter: TimeInterval = 10
+    /// Stuck checks per app, at most, so hung threads can't pile up.
+    private static let maxInFlight = 3
 
     static func isAllowed(_ target: ScriptTarget) -> Bool {
-        if allowed.withLock({ $0.contains(target.bundleID) }) { return true }
-        guard OnboardingChecks.automationStatus(for: target.bundleID) == .satisfied else { return false }
-        allowed.withLock { _ = $0.insert(target.bundleID) }
-        return true
+        let id = target.bundleID
+        let now = Date()
+        let (allowed, startCheck) = state.withLock { s -> (Bool, Bool) in
+            if s.allowed.contains(id) { return (true, false) }
+            let inFlight = s.inFlight[id, default: 0]
+            if inFlight > 0 {
+                let started = s.lastStarted[id] ?? now
+                guard now.timeIntervalSince(started) >= stuckAfter, inFlight < maxInFlight else {
+                    return (false, false)
+                }
+                playbackLogger.log("🔐 permission check for \(id, privacy: .public) stuck, retrying")
+            } else if let finished = s.lastFinished[id], now.timeIntervalSince(finished) < recheckAfter {
+                return (false, false)
+            }
+            s.inFlight[id] = inFlight + 1
+            s.lastStarted[id] = now
+            return (false, true)
+        }
+        if startCheck {
+            Thread {
+                let ok = OnboardingChecks.automationStatus(for: id) == .satisfied
+                state.withLock { s in
+                    s.inFlight[id, default: 1] -= 1
+                    s.lastFinished[id] = Date()
+                    if ok {
+                        s.allowed.insert(id)
+                        s.denied.remove(id)
+                    } else if !s.allowed.contains(id) {
+                        s.denied.insert(id)
+                    }
+                }
+            }.start()
+        }
+        return allowed
     }
 
     /// Running players the user hasn't allowed yet, for the pill's idle hint.
+    /// Only apps a finished check turned down, so the hint doesn't flash
+    /// while the first check is still running.
     static func playersWaitingForAccess() -> [ScriptTarget] {
-        ScriptTarget.players.filter { $0.isRunning && !isAllowed($0) }
+        ScriptTarget.players.filter { target in
+            guard target.isRunning, !isAllowed(target) else { return false }
+            return state.withLock { $0.denied.contains(target.bundleID) }
+        }
     }
 }
