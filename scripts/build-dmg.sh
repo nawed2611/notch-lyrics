@@ -9,7 +9,7 @@ cd "$ROOT"
 
 APP_NAME="Notch Lyrics"
 BUNDLE_ID="com.notchlyrics.app"
-VERSION="1.1.3"
+VERSION="1.1.4"
 BUILD_DIR="$ROOT/build"
 APP_DIR="$BUILD_DIR/$APP_NAME.app"
 DMG_PATH="$BUILD_DIR/$APP_NAME.dmg"

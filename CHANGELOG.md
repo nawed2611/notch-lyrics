@@ -6,6 +6,15 @@ All notable changes to this project are listed here. The format follows
 
 ## [Unreleased]
 
+## [1.1.4] - 2026-11-06
+
+### Fixed
+
+- The notch could stop showing anything while music played, until the app
+  was quit and reopened. A macOS permission check sometimes never returned,
+  and the app waited on it forever. The check now runs on its own, and any
+  playback check that hangs is dropped and retried after 10 seconds.
+
 ## [1.1.3] - 2026-11-02
 
 ### Fixed
@@ -91,7 +100,8 @@ First release.
   reverb.
 - Same bar centred in the menu bar on displays without a notch.
 
-[Unreleased]: https://github.com/nawed2611/notch-lyrics/compare/v1.1.3...HEAD
+[Unreleased]: https://github.com/nawed2611/notch-lyrics/compare/v1.1.4...HEAD
+[1.1.4]: https://github.com/nawed2611/notch-lyrics/compare/v1.1.3...v1.1.4
 [1.1.3]: https://github.com/nawed2611/notch-lyrics/compare/v1.1.2...v1.1.3
 [1.1.2]: https://github.com/nawed2611/notch-lyrics/compare/v1.1.1...v1.1.2
 [1.1.1]: https://github.com/nawed2611/notch-lyrics/compare/v1.1.0...v1.1.1
